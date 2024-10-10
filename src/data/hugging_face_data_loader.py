@@ -1,8 +1,9 @@
 import csv
 import os
 
+import pandas as pd
 import pyarrow.parquet as pq
-from datasets import load_dataset
+from datasets import Dataset, DatasetDict, load_dataset
 
 
 class HuggingFaceDataLoader:
@@ -26,7 +27,7 @@ class HuggingFaceDataLoader:
         """
         self.output_dir = output_dir
 
-    def load_database(self, link: str):
+    def load_dataset(self, link: str):
         """
         Load a dataset from Hugging Face using the provided link.
 
@@ -39,15 +40,15 @@ class HuggingFaceDataLoader:
             Exception: If there's an error loading the dataset.
         """
         try:
-            ds = load_dataset(link)
+            self.raw_dataset = load_dataset(link)
             print("Dataset loaded successfully")
-            print(f"Dataset structure: {ds}")
-            self._combine_dataset(ds)
+            print(f"Dataset structure: {self.raw_dataset}")
+            self._combine_dataset()
         except Exception as e:
             print(f"Error loading dataset: {e}")
             raise
 
-    def _combine_dataset(self, ds: dict):
+    def _combine_dataset(self):
         """
         Combine multiple partitions of a dataset into a single dataset.
 
@@ -56,9 +57,82 @@ class HuggingFaceDataLoader:
         Args:
             ds (dict): A dictionary containing dataset partitions.
         """
-        self.dataset = ds[next(iter(ds))]
-        for partition in list(ds.keys())[1:]:
-            self.dataset = self.dataset.concatenate_datasets([ds[partition]])
+        self.dataset = self.raw_dataset[next(iter(self.raw_dataset))]
+        for partition in list(self.raw_dataset.keys())[1:]:
+            self.dataset = self.dataset.concatenate_datasets(
+                [self.raw_dataset[partition]]
+            )
+
+    def output_dataset(self, split: str = None) -> DatasetDict | Dataset:
+        """
+        Return the raw dataset as a DatasetDict object, or a specific split as a Dataset object.
+
+        Args:
+            split (str, optional): The name of the split to return. If None, returns the entire DatasetDict.
+
+        Returns:
+            DatasetDict | Dataset: The entire DatasetDict if no split is specified, or a Dataset object for a specific split.
+
+        Raises:
+            ValueError: If the dataset has not been loaded yet or if the specified split doesn't exist.
+        """
+        if self.raw_dataset is None:
+            raise ValueError(
+                "Dataset has not been loaded. Please load a dataset first."
+            )
+
+        if split is None:
+            return self.raw_dataset
+        elif split in self.raw_dataset:
+            return self.raw_dataset[split]
+        else:
+            available_splits = list(self.raw_dataset.keys())
+            raise ValueError(
+                f"Split '{split}' not found. Available splits are: {available_splits}"
+            )
+
+    def load_local_file(self, file_name: str, chunk_size: int = 100000):
+        """
+        Load a dataset from a local file.
+        This method attempts to load the dataset from a local file and sets it to self.raw_dataset.
+
+        Args:
+            file_name (str): The name of the file to load.
+            chunk_size (int): The number of rows to load at a time for Parquet files.
+
+        Raises:
+            Exception: If there's an error loading the dataset.
+        """
+        try:
+            _, extension = os.path.splitext(file_name)
+            extension = extension.lower()
+            file_path = os.path.join(self.output_dir, file_name)
+
+            if extension == ".csv":
+                df = pd.read_csv(file_path)
+                self.raw_dataset = Dataset.from_pandas(df)
+            elif extension == ".parquet":
+                print("Parquet file detected")
+                # Use pyarrow to read Parquet file in chunks
+                parquet_file = pq.ParquetFile(file_path)
+
+                # Read and process the file in chunks
+                chunks = []
+                for batch in parquet_file.iter_batches(batch_size=chunk_size):
+                    chunks.append(batch.to_pandas())
+
+                # Combine all chunks
+                df = pd.concat(chunks, ignore_index=True)
+                self.raw_dataset = Dataset.from_pandas(df)
+            else:
+                raise ValueError(f"Unsupported file type: {extension}")
+
+            print("Local dataset loaded successfully")
+            print(f"Dataset structure: {self.raw_dataset}")
+            self._combine_dataset()
+        except Exception as e:
+            print(f"Error loading local dataset: {e}")
+            raise
 
     def output_parquet(self, file_name: str):
         """

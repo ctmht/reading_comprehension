@@ -21,6 +21,7 @@
 *.tar
 *.zip
 *.parquet 
+*.csv
 # Logs and databases #
 ######################
 *.log
