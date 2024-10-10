@@ -64,9 +64,7 @@ class Llama7B(GenericModel):
 
         # Train the model
         trainer.train()
-
-        # Save the model
-        trainer.save_model("./finetuned_model")
+        trainer.save_model("../../data/models/finetuned_model")
 
     def prompt(self, prompt: str, **kwargs) -> Any:
         """
