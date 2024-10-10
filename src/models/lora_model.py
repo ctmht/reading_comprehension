@@ -1,10 +1,10 @@
 from typing import Any, Union
 import os
 
-from .generic_llama import GenericLlama
+from .generic_llama7b import GenericLlama7B
 
 
-class LoRAModel(GenericLlama):
+class LoRAModel(GenericLlama7B):
 	""" Llama7B finetuned using LoRA """
 	
 	def __init__(

@@ -3,7 +3,7 @@ from typing import Any, Union
 import os
 
 
-class GenericLlama(ABC):
+class GenericLlama7B(ABC):
 	""" Interface for generic Llama7B model with full finetuning """
 	
 	@abstractmethod
@@ -53,6 +53,7 @@ class GenericLlama(ABC):
 	) -> None:
 		"""
 		Save pickled model at the specified path
+		Or however we decide to save it...
 		"""
 		# pickle(self.model)
 		pass
