@@ -10,6 +10,7 @@ def main() -> None:
     # data_loader.load_local_file("combined_data.parquet")
 
     model = Llama7B(data_loader)
+    model.finetune()
 
 
 if __name__ == "__main__":
