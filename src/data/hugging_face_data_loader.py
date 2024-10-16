@@ -63,7 +63,7 @@ class HuggingFaceDataLoader:
                 [self.raw_dataset[partition]]
             )
 
-    def output_dataset(self, split: str = None) -> DatasetDict | Dataset:
+    def output_dataset(self, split: str = None) -> DatasetDict:
         """
         Return the raw dataset as a DatasetDict object, or a specific split as a Dataset object.
 

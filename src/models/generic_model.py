@@ -30,7 +30,7 @@ class GenericModel(ABC):
         pass
 
     @abstractmethod
-    def save(self, path: Union[str, os.path], **kwargs) -> None:
+    def save(self, path: Union[str, os.PathLike], **kwargs) -> None:
         """
         Save pickled model at the specified path
         Or however we decide to save it...
@@ -39,7 +39,7 @@ class GenericModel(ABC):
         pass
 
     @abstractmethod
-    def load(self, path: Union[str, os.path], **kwargs) -> None:
+    def load(self, path: Union[str, os.PathLike], **kwargs) -> None:
         """
         Save pickled model at the specified path
         """
