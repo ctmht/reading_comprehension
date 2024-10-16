@@ -1,4 +1,6 @@
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 
 class DataHandler:
@@ -20,7 +22,7 @@ class DataHandler:
             file_name (str): The name of the file (without extension) to be handled.
                              The file is assumed to be in a 'data' directory with a .parquet extension.
         """
-        self.path = f"data/{file_name}.parquet"
+        self.path = "data/{file_name}.parquet".format(file_path=file_name)
 
     def read_data(self) -> pd.DataFrame:
         """
@@ -31,9 +33,9 @@ class DataHandler:
 
         Raises:
             FileNotFoundError: If the specified Parquet file does not exist.
-            ValueError: If no suitable engine is available for reading Parquet files.
+            pyarrow.lib.ArrowIOError: If there's an error reading the Parquet file.
         """
-        return pd.read_parquet(self.path, engine="fastparquet")
+        return pq.read_table(self.path).to_pandas()
 
     def write_data(self, data: pd.DataFrame) -> None:
         """
@@ -43,9 +45,11 @@ class DataHandler:
             data (pd.DataFrame): The DataFrame to be written to the Parquet file.
 
         Raises:
-            ValueError: If no suitable engine is available for writing Parquet files.
+            pyarrow.lib.ArrowInvalid: If the DataFrame cannot be converted to a PyArrow Table.
+            pyarrow.lib.ArrowIOError: If there's an error writing to the Parquet file.
         """
-        data.to_parquet(self.path, engine="fastparquet")
+        table = pa.Table.from_pandas(data)
+        pq.write_table(table, self.path)
 
     def create_split(self):
         """
@@ -55,6 +59,7 @@ class DataHandler:
         It can be implemented to split the data into training, validation, and test sets.
         """
         # TODO: Implement data splitting functionality.
+
         pass
 
     def tokenize(self):
