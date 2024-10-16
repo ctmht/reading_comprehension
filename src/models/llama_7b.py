@@ -1,8 +1,9 @@
 import os
 from typing import Any, Union
 
+import pandas as pd
 import torch
-from datasets import Dataset
+from torch.utils.data import TensorDataset
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           DataCollatorForLanguageModeling, Trainer,
                           TrainingArguments)
@@ -20,7 +21,7 @@ class Llama7B(GenericModel):
         """
         super().__init__()
         self.base_model = "NousResearch/Llama-2-7b-chat-hf"
-        self.dataset = dataset_loader.output_dataset("train")
+        self.dataset = dataset_loader.output_dataset("train")  # pandas DataFrame
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model)
         self.model = None
 
@@ -48,24 +49,27 @@ class Llama7B(GenericModel):
         )
 
         # Prepare the dataset
-        def formatting_prompts_func(example):
-            return f"### Human: {example['instruction']}\n### Assistant: {example['response']}"
+        def formatting_prompts_func(row):
+            return f"### Human: {row['instruction']}\n### Assistant: {row['response']}"
 
-        formatted_dataset = self.dataset.map(
-            lambda x: {"text": formatting_prompts_func(x)},
-            remove_columns=self.dataset.column_names,
-        )
+        self.dataset["text"] = self.dataset.apply(formatting_prompts_func, axis=1)
 
         # Tokenize the dataset
-        tokenized_dataset = formatted_dataset.map(
-            lambda x: self.tokenizer(
-                x["text"],
-                truncation=True,
-                padding="max_length",
-                max_length=512,
-            ),
-            batched=True,
+        tokenized_inputs = self.tokenizer(
+            list(self.dataset["text"]),
+            truncation=True,
+            padding="max_length",
+            max_length=512,
+            return_tensors="pt",
         )
+
+        # Create labels for causal language modeling
+        input_ids = tokenized_inputs["input_ids"]
+        attention_mask = tokenized_inputs["attention_mask"]
+        labels = input_ids.clone()
+
+        # Create a TensorDataset
+        train_dataset = TensorDataset(input_ids, attention_mask, labels)
 
         # Define data collator
         data_collator = DataCollatorForLanguageModeling(
@@ -76,7 +80,7 @@ class Llama7B(GenericModel):
         trainer = Trainer(
             model=self.model,
             args=training_args,
-            train_dataset=tokenized_dataset,
+            train_dataset=train_dataset,
             data_collator=data_collator,
         )
 
