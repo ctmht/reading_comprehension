@@ -1,5 +1,4 @@
 datasets
-pyarrow
 ipykernel
 pandas
 matplotlib
