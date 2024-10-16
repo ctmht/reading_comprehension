@@ -2,17 +2,17 @@ import os
 from typing import Any, Union
 
 import torch
+from datasets import Dataset
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
-                          BitsAndBytesConfig, TrainingArguments, logging,
-                          pipeline)
-from trl import SFTTrainer
+                          DataCollatorForLanguageModeling, Trainer,
+                          TrainingArguments)
 
 from src.data.hugging_face_data_loader import HuggingFaceDataLoader
 from src.models.generic_model import GenericModel
 
 
 class Llama7B(GenericModel):
-    """Interface for generic Llama7B model with full finetuning"""
+    """Interface for generic Llama7B model with full fine-tuning"""
 
     def __init__(self, dataset_loader: HuggingFaceDataLoader):
         """
@@ -26,8 +26,7 @@ class Llama7B(GenericModel):
 
     def finetune(self, **kwargs) -> Any:
         """
-        Function handling the finetuning procedure of the LLM
-        on the given training data pairs in (train_in, train_out)
+        Function handling the fine-tuning procedure of the LLM
         """
         training_args = TrainingArguments(
             output_dir="./results",
@@ -50,47 +49,65 @@ class Llama7B(GenericModel):
 
         # Prepare the dataset
         def formatting_prompts_func(example):
-            output = f"### Human: {example['instruction']}\n### Assistant: {example['response']}"
-            return output
+            return f"### Human: {example['instruction']}\n### Assistant: {example['response']}"
 
-        # Initialize the SFTTrainer
-        trainer = SFTTrainer(
+        formatted_dataset = self.dataset.map(
+            lambda x: {"text": formatting_prompts_func(x)},
+            remove_columns=self.dataset.column_names,
+        )
+
+        # Tokenize the dataset
+        tokenized_dataset = formatted_dataset.map(
+            lambda x: self.tokenizer(
+                x["text"],
+                truncation=True,
+                padding="max_length",
+                max_length=512,
+            ),
+            batched=True,
+        )
+
+        # Define data collator
+        data_collator = DataCollatorForLanguageModeling(
+            tokenizer=self.tokenizer, mlm=False
+        )
+
+        # Initialize the Trainer
+        trainer = Trainer(
             model=self.model,
             args=training_args,
-            train_dataset=self.dataset,
-            formatting_func=formatting_prompts_func,
-            tokenizer=self.tokenizer,
+            train_dataset=tokenized_dataset,
+            data_collator=data_collator,
         )
 
         # Train the model
         trainer.train()
-        trainer.save_model("../../data/models/finetuned_model")
+        trainer.save_model("./finetuned_model")
 
     def prompt(self, prompt: str, **kwargs) -> Any:
         """
         Function handling the generation of output
         """
         if self.model is None:
-            raise ValueError("Model has not been finetuned or loaded yet.")
+            raise ValueError("Model has not been fine-tuned or loaded yet.")
 
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
         outputs = self.model.generate(inputs.input_ids, max_new_tokens=100, **kwargs)
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    def save(self, path: Union[str, os.path], **kwargs) -> None:
+    def save(self, path: Union[str, os.PathLike], **kwargs) -> None:
         """
-        Save pickled model at the specified path
-        Or however we decide to save it...
+        Save the model and tokenizer
         """
         if self.model is None:
-            raise ValueError("Model has not been finetuned or loaded yet.")
+            raise ValueError("Model has not been fine-tuned or loaded yet.")
 
         self.model.save_pretrained(path)
         self.tokenizer.save_pretrained(path)
 
-    def load(self, path: Union[str, os.path], **kwargs) -> None:
+    def load(self, path: Union[str, os.PathLike], **kwargs) -> None:
         """
-        Save pickled model at the specified path
+        Load the model and tokenizer from the specified path
         """
         self.model = AutoModelForCausalLM.from_pretrained(
             path,
