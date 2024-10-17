@@ -1,8 +1,7 @@
 import csv
 import os
 
-import pandas as pd
-import pyarrow.parquet as pq
+import dask.dataframe as dd
 from datasets import Dataset, DatasetDict, load_dataset
 
 
@@ -109,21 +108,17 @@ class HuggingFaceDataLoader:
             file_path = os.path.join(self.output_dir, file_name)
 
             if extension == ".csv":
-                df = pd.read_csv(file_path)
-                self.raw_dataset = Dataset.from_pandas(df)
+                df = dd.read_csv(file_path)
+                self.raw_dataset = Dataset.from_pandas(
+                    df.compute()
+                )  # Convert Dask DF to pandas before loading to Dataset
             elif extension == ".parquet":
                 print("Parquet file detected")
-                # Use pyarrow to read Parquet file in chunks
-                parquet_file = pq.ParquetFile(file_path)
-
-                # Read and process the file in chunks
-                chunks = []
-                for batch in parquet_file.iter_batches(batch_size=chunk_size):
-                    chunks.append(batch.to_pandas())
-
-                # Combine all chunks
-                df = pd.concat(chunks, ignore_index=True)
-                self.raw_dataset = Dataset.from_pandas(df)
+                # Use dask to read Parquet files
+                df = dd.read_parquet(file_path)
+                self.raw_dataset = Dataset.from_pandas(
+                    df.compute()
+                )  # Convert Dask DF to pandas before loading to Dataset
             else:
                 raise ValueError(f"Unsupported file type: {extension}")
 
@@ -147,7 +142,8 @@ class HuggingFaceDataLoader:
         output_path_parquet = os.path.join(self.output_dir, file_name + ".parquet")
 
         try:
-            self.dataset.to_parquet(output_path_parquet)
+            dask_df = dd.from_pandas(self.dataset.to_pandas(), npartitions=10)
+            dask_df.to_parquet(output_path_parquet)
             print(f"Attempting to save data to: {output_path_parquet}")
 
             if os.path.exists(output_path_parquet):
@@ -174,7 +170,8 @@ class HuggingFaceDataLoader:
         output_path_csv = os.path.join(self.output_dir, file_name + ".csv")
 
         try:
-            self.dataset.to_csv(output_path_csv)
+            dask_df = dd.from_pandas(self.dataset.to_pandas(), npartitions=10)
+            dask_df.to_csv(output_path_csv, single_file=True)
             print(f"Attempting to save data to: {output_path_csv}")
 
             if os.path.exists(output_path_csv):
