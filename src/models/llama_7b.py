@@ -1,6 +1,7 @@
 import os
 from typing import Any, Union
 
+import dask.dataframe as dd
 import pandas as pd
 import torch
 from torch.utils.data import TensorDataset
@@ -15,13 +16,16 @@ from src.models.generic_model import GenericModel
 class Llama7B(GenericModel):
     """Interface for generic Llama7B model with full fine-tuning"""
 
-    def __init__(self, dataset_loader: HuggingFaceDataLoader):
+    def __init__(
+        self, dataset_loader: HuggingFaceDataLoader, chunked_data: dd.DataFrame
+    ):
         """
         Initialize the base Llama7B model
         """
         super().__init__()
         self.base_model = "NousResearch/Llama-2-7b-chat-hf"
-        self.dataset = dataset_loader.output_dataset("train")  # pandas DataFrame
+        # Convert the Dask DataFrame to a pandas DataFrame for processing
+        self.dataset = chunked_data.compute()  # Convert Dask to pandas DataFrame
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model)
         self.model = None
 
@@ -119,3 +123,18 @@ class Llama7B(GenericModel):
             torch_dtype=torch.float16,
         )
         self.tokenizer = AutoTokenizer.from_pretrained(path)
+
+
+def main() -> None:
+    data_loader = HuggingFaceDataLoader("data/")
+
+    # Step 2: Load the chunked data files using Dask
+    chunked_data = data_loader.load_chunked_files()
+
+    # Initialize the model with the loaded Dask dataframe
+    model = Llama7B(data_loader, chunked_data)
+    model.finetune()
+
+
+if __name__ == "__main__":
+    main()
