@@ -1,8 +1,8 @@
-import csv
 import os
 
 import dask.dataframe as dd
-from datasets import Dataset, DatasetDict, load_dataset
+import pandas as pd
+from datasets import load_dataset
 
 
 class HuggingFaceDataLoader:
@@ -25,70 +25,64 @@ class HuggingFaceDataLoader:
             output_dir (str): The directory where output files will be saved.
         """
         self.output_dir = output_dir
+        self.raw_dataset = None
+        self.dataset = None
 
-    def load_dataset(self, link: str):
+    def pull_and_chunk_dataset(self, dataset_link: str, chunk_size: int = 5000000):
         """
-        Load a dataset from Hugging Face using the provided link.
-
-        This method attempts to load the dataset and combines multiple partitions if present.
+        Pull a dataset from Hugging Face, split it into smaller chunks, and save to the output directory.
 
         Args:
-            link (str): The Hugging Face dataset link.
+            dataset_link (str): The dataset link for Hugging Face dataset.
+            chunk_size (int): Number of rows per chunk. Adjust this size based on the file size limitations.
 
         Raises:
-            Exception: If there's an error loading the dataset.
+            Exception: If there's an error pulling or saving the dataset.
         """
         try:
-            self.raw_dataset = load_dataset(link)
-            print("Dataset loaded successfully")
-            print(f"Dataset structure: {self.raw_dataset}")
-            self._combine_dataset()
+            # Load the dataset from Hugging Face
+            self.raw_dataset = load_dataset("Nan-Do/code-search-net-python")
+
+            # Convert the dataset to a pandas DataFrame
+            df = self.raw_dataset.to_pandas()
+
+            # Calculate the number of chunks based on the desired chunk size
+            num_chunks = (len(df) // chunk_size) + 1
+
+            # Ensure the output directory exists
+            os.makedirs(self.output_dir, exist_ok=True)
+
+            # Split and save each chunk as a separate Parquet file
+            for i in range(num_chunks):
+                chunk_df = df[i * chunk_size : (i + 1) * chunk_size]
+                chunk_path = os.path.join(self.output_dir, f"data_chunk_{i}.parquet")
+                chunk_df.to_parquet(chunk_path)
+                print(f"Saved chunk {i+1}/{num_chunks} to {chunk_path}")
+
         except Exception as e:
-            print(f"Error loading dataset: {e}")
+            print(f"Error pulling or saving the dataset: {e}")
             raise
 
-    def _combine_dataset(self):
+    def load_chunked_files(self) -> dd.DataFrame:
         """
-        Combine multiple partitions of a dataset into a single dataset.
-
-        This method is called internally by load_dataset to merge multiple partitions.
-
-        Args:
-            ds (dict): A dictionary containing dataset partitions.
-        """
-        self.dataset = self.raw_dataset[next(iter(self.raw_dataset))]
-        for partition in list(self.raw_dataset.keys())[1:]:
-            self.dataset = self.dataset.concatenate_datasets(
-                [self.raw_dataset[partition]]
-            )
-
-    def output_dataset(self, split: str = None) -> DatasetDict:
-        """
-        Return the raw dataset as a DatasetDict object, or a specific split as a Dataset object.
-
-        Args:
-            split (str, optional): The name of the split to return. If None, returns the entire DatasetDict.
+        Load chunked dataset files from the output directory using Dask.
 
         Returns:
-            DatasetDict | Dataset: The entire DatasetDict if no split is specified, or a Dataset object for a specific split.
+            dd.DataFrame: Dask dataframe of the loaded dataset chunks.
 
         Raises:
-            ValueError: If the dataset has not been loaded yet or if the specified split doesn't exist.
+            ValueError: If there are no chunked files in the output directory.
         """
-        if self.raw_dataset is None:
-            raise ValueError(
-                "Dataset has not been loaded. Please load a dataset first."
-            )
+        try:
+            # Use Dask to load all Parquet chunk files in the output directory
+            chunk_files = os.path.join("data/original_data/", "data_chunk_*.parquet")
+            dask_df = dd.read_parquet(chunk_files)
 
-        if split is None:
-            return self.raw_dataset
-        elif split in self.raw_dataset:
-            return self.raw_dataset[split]
-        else:
-            available_splits = list(self.raw_dataset.keys())
-            raise ValueError(
-                f"Split '{split}' not found. Available splits are: {available_splits}"
-            )
+            print(f"Loaded chunked files from {self.output_dir}")
+            return dask_df
+        except Exception as e:
+            print(f"Error loading chunked files: {e}")
+            raise
 
     def load_local_file(self, file_name: str, chunk_size: int = 100000):
         """
@@ -97,91 +91,38 @@ class HuggingFaceDataLoader:
 
         Args:
             file_name (str): The name of the file to load.
-            chunk_size (int): The number of rows to load at a time for Parquet files.
+            chunk_size (int): Not used with Dask.
 
         Raises:
             Exception: If there's an error loading the dataset.
         """
         try:
-            _, extension = os.path.splitext(file_name)
-            extension = extension.lower()
             file_path = os.path.join(self.output_dir, file_name)
 
-            if extension == ".csv":
-                df = dd.read_csv(file_path)
-                self.raw_dataset = Dataset.from_pandas(
-                    df.compute()
-                )  # Convert Dask DF to pandas before loading to Dataset
-            elif extension == ".parquet":
-                print("Parquet file detected")
-                # Use dask to read Parquet files
-                df = dd.read_parquet(file_path)
-                self.raw_dataset = Dataset.from_pandas(
-                    df.compute()
-                )  # Convert Dask DF to pandas before loading to Dataset
+            if file_name.endswith(".csv"):
+                self.raw_dataset = dd.read_csv(file_path)
+            elif file_name.endswith(".parquet"):
+                self.raw_dataset = dd.read_parquet(file_path)
             else:
-                raise ValueError(f"Unsupported file type: {extension}")
+                raise ValueError(f"Unsupported file type: {file_name}")
 
-            print("Local dataset loaded successfully")
+            print("Local dataset loaded successfully with Dask")
             print(f"Dataset structure: {self.raw_dataset}")
             self._combine_dataset()
         except Exception as e:
             print(f"Error loading local dataset: {e}")
             raise
 
-    def output_parquet(self, file_name: str):
+    def _combine_dataset(self):
         """
-        Export the dataset to a Parquet file.
+        Combine multiple partitions of a dataset into a single dataset.
 
-        Args:
-            file_name (str): The name of the output file (without extension).
+        This method is called internally to merge multiple partitions.
 
-        Raises:
-            Exception: If there's an error saving the Parquet file.
         """
-        output_path_parquet = os.path.join(self.output_dir, file_name + ".parquet")
-
-        try:
-            dask_df = dd.from_pandas(self.dataset.to_pandas(), npartitions=10)
-            dask_df.to_parquet(output_path_parquet)
-            print(f"Attempting to save data to: {output_path_parquet}")
-
-            if os.path.exists(output_path_parquet):
-                print(f"Parquet file successfully created at: {output_path_parquet}")
-                print(
-                    f"Parquet file size: {os.path.getsize(output_path_parquet)} bytes"
-                )
-            else:
-                print(f"Error: Parquet file was not created at {output_path_parquet}")
-        except Exception as e:
-            print(f"Error saving to Parquet: {e}")
-            raise
-
-    def output_csv(self, file_name: str):
-        """
-        Export the dataset to a CSV file.
-
-        Args:
-            file_name (str): The name of the output file (without extension).
-
-        Raises:
-            Exception: If there's an error saving the CSV file.
-        """
-        output_path_csv = os.path.join(self.output_dir, file_name + ".csv")
-
-        try:
-            dask_df = dd.from_pandas(self.dataset.to_pandas(), npartitions=10)
-            dask_df.to_csv(output_path_csv, single_file=True)
-            print(f"Attempting to save data to: {output_path_csv}")
-
-            if os.path.exists(output_path_csv):
-                print(f"CSV file successfully created at: {output_path_csv}")
-                print(f"CSV file size: {os.path.getsize(output_path_csv)} bytes")
-            else:
-                print(f"Error: CSV file was not created at {output_path_csv}")
-        except Exception as e:
-            print(f"Error saving to CSV: {e}")
-            raise
+        # In Dask, combining partitions is already handled automatically, but if you want to
+        # trigger a compute or additional processing, you can do so here.
+        self.dataset = self.raw_dataset  # No explicit combination needed for Dask
 
     def print_dataset(self):
         """
