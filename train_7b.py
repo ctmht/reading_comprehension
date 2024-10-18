@@ -17,6 +17,11 @@ def main() -> None:
 
     # Initialize the model with the loaded data
     model = Llama7B(data_loader, chunked_data)
+
+    # Print dataset information
+    model.print_dataset_info()
+
+    # Fine-tune the model
     model.finetune()
 
 
