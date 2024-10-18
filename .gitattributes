@@ -1,1 +1,2 @@
 *.parquet filter=lfs diff=lfs merge=lfs -text
+data/original_data/data_chunk_0.parquet filter=lfs diff=lfs merge=lfs -text
