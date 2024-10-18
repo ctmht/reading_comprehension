@@ -525,7 +525,6 @@ pyrightconfig.json
 *.tar
 *.zip
 *.csv
-*.parquet
 # Logs and databases #
 ######################
 *.log
