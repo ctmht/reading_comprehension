@@ -31,6 +31,16 @@ def get_latest_epoch():
     return max(epochs) if epochs else 0
 
 
+
+def get_latest_epoch():
+    epochs = [
+        int(d.split("_")[-1])
+        for d in os.listdir(".")
+        if d.startswith("finetuned_model_epoch_")
+    ]
+    return max(epochs) if epochs else 0
+
+
 RAW_TEXT_DATASET = (
     "hf://datasets/Nan-Do/code-search-net-python/data/train-*-of-*.parquet"
 )
