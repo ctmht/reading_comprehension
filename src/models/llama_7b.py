@@ -2,12 +2,10 @@ import os
 from typing import Any, Union
 
 import dask.dataframe as dd
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
-from transformers import (GPT2LMHeadModel, GPT2Tokenizer,
-                          DataCollatorForLanguageModeling,
-                          get_linear_schedule_with_warmup)
+from transformers import (DataCollatorForLanguageModeling, GPT2LMHeadModel,
+                          GPT2Tokenizer, get_linear_schedule_with_warmup)
 
 from src.data.hugging_face_data_loader import HuggingFaceDataLoader
 from src.models.generic_model import GenericModel
@@ -109,7 +107,7 @@ class Llama7B(GenericModel):
         self.model.to(device)
 
         self.model.train()
-        for epoch in range(start_epoch, num_epochs):
+        for epoch in range(start_epoch, start_epoch, num_epochs):
             print(f"Epoch {epoch+1}/{num_epochs}")
             for step, batch in enumerate(train_dataloader):
                 optimizer.zero_grad()

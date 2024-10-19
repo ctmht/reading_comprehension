@@ -1,3 +1,7 @@
+import os
+
+import torch
+
 from src.data.hugging_face_data_loader import HuggingFaceDataLoader
 from src.models.llama_7b import Llama7B
 import os
@@ -6,6 +10,16 @@ import torch
 def get_latest_epoch():
     epochs = [int(d.split('_')[-1]) for d in os.listdir('.') if d.startswith('finetuned_model_epoch_')]
     return max(epochs) if epochs else 0
+
+
+def get_latest_epoch():
+    epochs = [
+        int(d.split("_")[-1])
+        for d in os.listdir(".")
+        if d.startswith("finetuned_model_epoch_")
+    ]
+    return max(epochs) if epochs else 0
+
 
 RAW_TEXT_DATASET = (
     "hf://datasets/Nan-Do/code-search-net-python/data/train-*-of-*.parquet"
