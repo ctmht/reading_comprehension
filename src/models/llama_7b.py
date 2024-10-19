@@ -2,12 +2,10 @@ import os
 from typing import Any, Union
 
 import dask.dataframe as dd
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
-from transformers import (GPT2LMHeadModel, GPT2Tokenizer,
-                          DataCollatorForLanguageModeling, TrainingArguments,
-                          get_linear_schedule_with_warmup)
+from transformers import (DataCollatorForLanguageModeling, GPT2LMHeadModel,
+                          GPT2Tokenizer, get_linear_schedule_with_warmup)
 
 from src.data.hugging_face_data_loader import HuggingFaceDataLoader
 from src.models.generic_model import GenericModel
@@ -58,13 +56,18 @@ class Llama7B(GenericModel):
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.model = None
 
-    def finetune(self, **kwargs) -> Any:
+    def finetune(self, start_epoch=0, num_epochs=3, **kwargs) -> Any:
         """
         Function handling the fine-tuning procedure of the LLM using a manual training loop
         """
-        # Load the model
-        self.model = GPT2LMHeadModel.from_pretrained(self.base_model)
-        self.model.resize_token_embeddings(len(self.tokenizer))
+        # Load the model or resume from checkpoint
+        if start_epoch > 0:
+            checkpoint_path = f"./finetuned_model_epoch_{start_epoch}"
+            self.load(checkpoint_path)
+            print(f"Resuming training from epoch {start_epoch}")
+        else:
+            self.model = GPT2LMHeadModel.from_pretrained(self.base_model)
+            self.model.resize_token_embeddings(len(self.tokenizer))
 
         # Prepare the dataset
         def formatting_prompts_func(row):
@@ -94,7 +97,6 @@ class Llama7B(GenericModel):
 
         # Prepare optimizer and scheduler
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=2e-5)
-        num_epochs = 3
         total_steps = num_epochs * len(train_dataloader)
         scheduler = get_linear_schedule_with_warmup(
             optimizer, num_warmup_steps=0, num_training_steps=total_steps
@@ -105,7 +107,7 @@ class Llama7B(GenericModel):
         self.model.to(device)
 
         self.model.train()
-        for epoch in range(num_epochs):
+        for epoch in range(start_epoch, num_epochs):
             print(f"Epoch {epoch+1}/{num_epochs}")
             for step, batch in enumerate(train_dataloader):
                 optimizer.zero_grad()
